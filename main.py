@@ -11,7 +11,7 @@ from streamlit_cookies_controller import CookieController
 
 @st.cache_resource
 def get_db_connection():
-    return sqlite3.connect("stockk.db", check_same_thread=False, uri=True)
+    return sqlite3.connect("gen_stonks.db", check_same_thread=False, uri=True)
 
 ph = argon2.PasswordHasher(
     memory_cost=65536,
@@ -748,6 +748,71 @@ def stocks_view(conn, user_id):
 def admin_view(conn):
     st.title("Admin Panel")
     c = conn.cursor()
+
+    # CSV Upload Section
+    st.subheader("Bulk Import Stocks from CSV")
+    st.markdown("Upload a CSV file with columns: name, symbol, price, stock_amount, dividend_rate, change_rate")
+    
+    uploaded_file = st.file_uploader("Choose a CSV file", type=['csv'], key="csv_uploader")
+    
+    if uploaded_file is not None:
+        try:
+            df = pd.read_csv(uploaded_file)
+            st.write("Preview of uploaded data:")
+            st.dataframe(df.head(), use_container_width=True)
+            
+            if st.button("Import Stocks from CSV", type="primary"):
+                success_count = 0
+                error_count = 0
+                errors = []
+                
+                for index, row in df.iterrows():
+                    try:
+                        # Validate required columns
+                        required_cols = ['name', 'symbol', 'price', 'stock_amount', 'dividend_rate', 'change_rate']
+                        for col in required_cols:
+                            if col not in row or pd.isna(row[col]):
+                                raise ValueError(f"Missing or empty value for column: {col}")
+                        
+                        # Insert stock data
+                        c.execute(
+                            """INSERT INTO stocks 
+                               (name, symbol, price, stock_amount, dividend_rate, change_rate, open_price, close_price, last_updated) 
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            (
+                                str(row['name']),
+                                str(row['symbol']).upper(),
+                                float(row['price']),
+                                float(row['stock_amount']),
+                                float(row['dividend_rate']),
+                                float(row['change_rate']),
+                                float(row['price']),  # open_price = price initially
+                                float(row['price']),  # close_price = price initially
+                                datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            )
+                        )
+                        success_count += 1
+                    except Exception as e:
+                        error_count += 1
+                        errors.append(f"Row {index + 1}: {str(e)}")
+                
+                conn.commit()
+                
+                if success_count > 0:
+                    st.success(f"Successfully imported {success_count} stocks!")
+                if error_count > 0:
+                    st.error(f"Failed to import {error_count} stocks. Errors:")
+                    for error in errors[:5]:  # Show first 5 errors
+                        st.write(f"• {error}")
+                    if len(errors) > 5:
+                        st.write(f"• ... and {len(errors) - 5} more errors")
+                
+                st.rerun()
+                
+        except Exception as e:
+            st.error(f"Error reading CSV file: {str(e)}")
+    
+    st.divider()
 
     st.subheader("Add New Stock")
     col1, col2, col3 = st.columns(3)
