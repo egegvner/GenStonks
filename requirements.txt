@@ -1,6 +1,14 @@
 streamlit
 pandas
+streamlit_autorefresh
+argon2-cffi
+numerize
+pydeck
+plotly
+yfinance
+streamlit_lightweight_charts
 numpy
-streamlit-autorefresh
-streamlit-lightweight-charts
-argon2-cffi>
+geopandas
+extra_streamlit_components
+scikit-learn
+streamlit_cookies_controller
