@@ -918,7 +918,12 @@ def main():
         admin_view(conn)
         return
 
+    if st.session_state.get("page") == "leaderboard":
+        leaderboard_view(conn)
+        return
+
     stocks_view(conn, st.session_state.user_id)
+
 
 if __name__ == "__main__":
     main()
