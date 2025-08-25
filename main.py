@@ -4,8 +4,6 @@ import random
 import time
 import pandas as pd
 import datetime
-import os
-import shutil
 from streamlit_autorefresh import st_autorefresh
 from streamlit_lightweight_charts import renderLightweightCharts
 import argon2
@@ -31,7 +29,6 @@ def verifyPass(hashed_password, entered_password):
         return False
 
 def inject_inter_font():
-    # Load Inter from Google Fonts and apply globally
     st.markdown(
         """
         <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -47,7 +44,6 @@ def inject_inter_font():
 
 def init_db(conn):
     c = conn.cursor()
-    # Users table (minimal for stocks app)
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS users (
@@ -59,8 +55,6 @@ def init_db(conn):
         )
         """
     )
-
-    # Stocks master table
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS stocks (
@@ -77,8 +71,6 @@ def init_db(conn):
         )
         """
     )
-
-    # Historical prices
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS stock_history (
@@ -90,8 +82,6 @@ def init_db(conn):
         )
         """
     )
-
-    # User holdings
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS user_stocks (
@@ -106,8 +96,6 @@ def init_db(conn):
         )
         """
     )
-
-    # Transactions used for buy/sell & volume metrics
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS transactions (
@@ -125,8 +113,6 @@ def init_db(conn):
         )
         """
     )
-
-    # Ensure Government account exists (used as counterparty)
     c.execute("SELECT user_id FROM users WHERE username='Government'")
     if not c.fetchone():
         c.execute(
@@ -163,7 +149,6 @@ def format_number(num, decimals=2):
             formatted_str = f"{formatted_num:.{decimals}f}".rstrip('0').rstrip('.')
             return f"{formatted_str}{suffix}"
     return str(num)
-
 
 def update_stock_prices(conn):
     c = conn.cursor()
@@ -213,7 +198,6 @@ def update_stock_prices(conn):
             continue
 
     conn.commit()
-
 
 def get_stock_metrics(conn, stock_id):
     c = conn.cursor()
@@ -272,7 +256,6 @@ def get_stock_metrics(conn, stock_id):
         "delta_all_time_low": delta_all_time_low,
     }
 
-
 def adjust_stock_prices(conn, stock_id, quantity, action):
     c = conn.cursor()
     price, stock_amount = c.execute("SELECT price, stock_amount FROM stocks WHERE stock_id = ?", (stock_id,)).fetchone()
@@ -289,7 +272,6 @@ def adjust_stock_prices(conn, stock_id, quantity, action):
     c.execute("UPDATE stocks SET price = ? WHERE stock_id = ?", (new_price, stock_id))
     conn.commit()
     st.rerun()
-
 
 def buy_stock(conn, user_id, stock_id, quantity):
     c = conn.cursor()
@@ -334,7 +316,6 @@ def buy_stock(conn, user_id, stock_id, quantity):
     conn.commit()
     st.toast(f"Purchased :blue[{format_number(quantity)}] shares for :green[${format_number(cost, 2)}]")
 
-
 def sell_stock(conn, user_id, stock_id, quantity):
     c = conn.cursor()
     price, symbol = c.execute("SELECT price, symbol FROM stocks WHERE stock_id = ?", (stock_id,)).fetchone()
@@ -366,7 +347,6 @@ def sell_stock(conn, user_id, stock_id, quantity):
 
     conn.commit()
     st.toast(f"Sold :blue[{format_number(quantity)}] shares for :green[${format_number(net_profit, 2)}]")
-
 
 def login_register_view(conn):
     st.title("Stocks Login")
@@ -782,7 +762,6 @@ def admin_view(conn):
         new_change = st.number_input("Change Rate", min_value=0.01, value=0.5, step=0.01)
     if st.button("Add Stock", type="primary"):
         try:
-            # stock_id uses INTEGER PRIMARY KEY; let SQLite assign ROWID or compute next id
             c.execute(
                 "INSERT INTO stocks (name, symbol, price, stock_amount, dividend_rate, change_rate, open_price, close_price, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (new_name, new_symbol.upper(), float(new_price), float(new_amount), float(new_dividend), float(new_change), new_price, new_price, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
@@ -801,7 +780,6 @@ def admin_view(conn):
     )
     edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True, key="stocks_editor")
     if st.button("Save Changes", type="primary"):
-        # Upsert edited rows back to DB
         for _, row in edited_df.iterrows():
             c.execute(
                 """
@@ -828,7 +806,6 @@ def admin_view(conn):
         to_delete_label = st.selectbox("Select stock to delete", options=list(del_map.keys()))
         if st.button("Delete", type="secondary"):
             sid = del_map[to_delete_label]
-            # Cascade delete dependent rows
             c.execute("DELETE FROM stock_history WHERE stock_id=?", (sid,))
             c.execute("DELETE FROM user_stocks WHERE stock_id=?", (sid,))
             c.execute("DELETE FROM transactions WHERE stock_id=?", (sid,))
@@ -839,17 +816,17 @@ def admin_view(conn):
     else:
         st.info("No stocks to delete.")
 
-
 def leaderboard_view(conn):
-    st.header("Ranking", divider="green")
+    c1, c2 = st.columns([4, 1])
+    c1.header("Ranking", divider="green")
+    if c2.button("Back to Stocks", use_container_width=True):
+        st.session_state.page = "stocks"
+        st.rerun()
     c = conn.cursor()
 
-    # Compute total wealth = balance + sum(quantity * price) across holdings
-    # Fetch balances
     users = c.execute("SELECT user_id, username, balance FROM users").fetchall()
     user_map = {uid: {"username": uname, "balance": bal, "stocks": 0.0} for uid, uname, bal in users}
 
-    # Aggregate stock holdings value using current prices
     rows = c.execute(
         """
         SELECT us.user_id, us.quantity, s.price
@@ -872,7 +849,6 @@ def leaderboard_view(conn):
 
     totals.sort(key=lambda x: x[1], reverse=True)
 
-    # Styling similar to main.py
     st.markdown('''
         <style>
             .leaderboard-frame { border-radius: 10px; padding: 10px; margin: 5px 0; text-align: center; font-weight: bold; color: white; }
@@ -902,14 +878,12 @@ def leaderboard_view(conn):
             unsafe_allow_html=True,
         )
 
-
 def main():
     st.set_page_config(page_title="Stocks", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
     inject_inter_font()
     conn = get_db_connection()
     init_db(conn)
 
-    # Restore session from cookies if present
     controller = CookieController()
     try:
         if controller.get("user_id"):
@@ -918,7 +892,6 @@ def main():
     except Exception:
         pass
 
-    # Sidebar: user credentials and logout
     with st.sidebar:
         st.header("Account")
         if st.session_state.get("user_id"):
@@ -929,7 +902,6 @@ def main():
                 (uid,)
             ).fetchone()
             st.write(f"User: @{username}")
-            # Admin Panel button only for 'admin'
             if username == "admin":
                 if st.button("Admin Panel"):
                     st.session_state.page = "admin"
@@ -944,12 +916,10 @@ def main():
         else:
             st.info("Not signed in")
 
-    # Main routing
     if not st.session_state.get("user_id"):
         login_register_view(conn)
         return
 
-    # Route to admin if selected and user is admin
     if st.session_state.get("page") == "admin" and st.session_state.get("username") == "admin":
         with st.sidebar:
             if st.button("Back to Stocks"):
@@ -958,17 +928,11 @@ def main():
         admin_view(conn)
         return
 
-    # Route to leaderboard if selected
     if st.session_state.get("page") == "leaderboard":
-        with st.sidebar:
-            if st.button("Back to Stocks"):
-                st.session_state.page = "stocks"
-                st.rerun()
         leaderboard_view(conn)
         return
 
     stocks_view(conn, st.session_state.user_id)
-
 
 if __name__ == "__main__":
     main()
