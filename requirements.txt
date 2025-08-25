@@ -1,0 +1,6 @@
+streamlit
+pandas
+numpy
+streamlit-autorefresh
+streamlit-lightweight-charts
+argon2-cffi>
